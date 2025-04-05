@@ -35,7 +35,6 @@ setup(
         'statsmodels==0.14',
         'localcider==0.1.21',
         'pytest==8.3.3',
-        'numba==0.60',
         'scipy==1.13',
         'mdtraj==1.10',
     ],

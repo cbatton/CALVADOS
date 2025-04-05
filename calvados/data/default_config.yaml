@@ -9,6 +9,8 @@ cutoff_yu : 4.0
 
 steps : 100000000
 wfreq : 100000
+save_freq : 100000
+h5_freq : 10
 platform : 'CPU'
 threads : 1
 runtime : 0

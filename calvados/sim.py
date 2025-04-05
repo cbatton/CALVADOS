@@ -1,8 +1,11 @@
 import numpy as np
 import openmm
 from openmm import app, unit
+from openmm.unit import md_unit_system
 
 from datetime import datetime
+
+import time
 
 import mdtraj as md
 
@@ -16,6 +19,7 @@ from yaml import safe_load
 from Bio.SeqUtils import seq3
 
 from .components import *
+from .traj_writer import TrajWriter
 
 class Sim:
     def __init__(self,path,config,components):
@@ -420,6 +424,41 @@ class Sim:
         for mw in mws:
             self.system.addParticle(mw*unit.amu)
 
+    def get_information(self, simulation, as_numpy=True, enforce_periodic_box=True):
+        """Gets information (positions, forces and PE of system)
+        Arguments:
+            as_numpy: A boolean of whether to return as a numpy array
+            enforce_periodic_box: A boolean of whether to enforce periodic boundary conditions
+        Returns:
+            positions: A numpy array of shape (n_atoms, 3) corresponding to the positions in nm
+            velocities: A numpy array of shape (n_atoms, 3) corresponding to the velocities in nm/ps
+            forces: A numpy array of shape (n_atoms, 3) corresponding to the force in kJ/mol*nm
+            pe: A float coressponding to the potential energy in kJ/mol
+            ke: A float coressponding to the kinetic energy in kJ/mol
+            cell: A numpy array of shape (3, 3) corresponding to the cell vectors in nm
+        """
+        state = simulation.context.getState(
+            getEnergy=True,
+            getForces=True,
+            getPositions=True,
+            getVelocities=True,
+            enforcePeriodicBox=enforce_periodic_box,
+        )
+        positions = state.getPositions(asNumpy=as_numpy).value_in_unit_system(
+            md_unit_system
+        )
+        forces = state.getForces(asNumpy=as_numpy).value_in_unit_system(md_unit_system)
+        velocities = state.getVelocities(asNumpy=as_numpy).value_in_unit_system(
+            md_unit_system
+        )
+        pe = state.getPotentialEnergy().value_in_unit_system(md_unit_system)
+        ke = state.getKineticEnergy().value_in_unit_system(md_unit_system)
+        cell = state.getPeriodicBoxVectors(asNumpy=as_numpy).value_in_unit_system(
+            md_unit_system
+        )
+
+        return positions, velocities, forces, pe, ke, cell
+
     def simulate(self):
         """ Simulate. """
 
@@ -479,7 +518,35 @@ class Sim:
         if self.slab_eq:
             print(f"Starting slab equilibration with k_eq == {self.k_eq:.4f} kJ/(mol*nm) for {self.steps_eq} steps", flush=True)
             simulation.reporters.append(app.dcdreporter.DCDReporter(f'{self.path}/equilibration_{self.sysname:s}.dcd',self.wfreq,append=append))
-            simulation.step(self.steps_eq)
+            h5_file_count = 0
+            h5_file = TrajWriter(
+                f'{self.path}/equilibration_{self.sysname:s}_{h5_file_count}.h5',
+                self.nparticles,
+                self.h5_freq,
+                precision=64,
+            )
+            total_stages = int(self.steps_eq / self.save_freq)
+            for _ in range(total_stages):
+                simulation.step(self.save_freq)
+                (
+                    positions,
+                    velocities,
+                    forces,
+                    pe,
+                    ke,
+                    cell,
+                ) = self.get_information(simulation, as_numpy=True, enforce_periodic_box=True)
+                if _ % self.h5_freq == 0 and _ != 0:
+                    h5_file.close()
+                    h5_file_count += 1
+                    h5_file = TrajWriter(
+                        f'{self.path}/equilibration_{self.sysname:s}_{h5_file_count}.h5',
+                        self.nparticles,
+                        self.h5_freq,
+                        precision=64,
+                    )
+                h5_file.write_frame(positions, velocities, forces, pe, ke, cell)
+            h5_file.early_close()
             state_final = simulation.context.getState(getPositions=True)
             rep = app.pdbreporter.PDBReporter(f'{self.path}/equilibration_final.pdb',0)
             rep.report(simulation,state_final)
@@ -502,7 +569,35 @@ class Sim:
         if self.box_eq or self.bilayer_eq:
             print(f"Starting pressure equilibration for {self.steps_eq} steps", flush=True)
             simulation.reporters.append(app.dcdreporter.DCDReporter(f'{self.path}/equilibration_{self.sysname:s}.dcd',self.wfreq,append=append))
-            simulation.step(self.steps_eq)
+            h5_file_count = 0
+            h5_file = TrajWriter(
+                f'{self.path}/equilibration_{self.sysname:s}_{h5_file_count}.h5',
+                self.nparticles,
+                self.h5_freq,
+                precision=64,
+            )
+            total_stages = int(self.steps_eq / self.save_freq)
+            for _ in range(total_stages):
+                simulation.step(self.save_freq)
+                (
+                    positions,
+                    velocities,
+                    forces,
+                    pe,
+                    ke,
+                    cell,
+                ) = self.get_information(simulation, as_numpy=True, enforce_periodic_box=True)
+                if _ % self.h5_freq == 0 and _ != 0:
+                    h5_file.close()
+                    h5_file_count += 1
+                    h5_file = TrajWriter(
+                        f'{self.path}/equilibration_{self.sysname:s}_{h5_file_count}.h5',
+                        self.nparticles,
+                        self.h5_freq,
+                        precision=64,
+                    )
+                h5_file.write_frame(positions, velocities, forces, pe, ke, cell)
+            h5_file.early_close()
             state_final = simulation.context.getState(getPositions=True,enforcePeriodicBox=True)
             rep = app.pdbreporter.PDBReporter(f'{self.path}/equilibration_final.pdb',0)
             rep.report(simulation,state_final)
@@ -539,13 +634,69 @@ class Sim:
 
         print("STARTING SIMULATION", flush=True)
         if self.runtime > 0: # in hours
-            simulation.runForClockTime(self.runtime*unit.hour, checkpointFile=fcheck_out, checkpointInterval=30*unit.minute)
+            # convert to seconds
+            runtime = self.runtime * 3600
+            h5_file_count = 0
+            h5_file = TrajWriter(
+                f'{self.path}/{self.sysname:s}_{h5_file_count}.h5',
+                self.nparticles,
+                self.h5_freq,
+                precision=64,
+            )
+            start_time = time.time()
+            end_time = time.time()
+            while (end_time - start_time) < runtime:
+                simulation.step(self.save_freq)
+                (
+                    positions,
+                    velocities,
+                    forces,
+                    pe,
+                    ke,
+                    cell,
+                ) = self.get_information(simulation, as_numpy=True, enforce_periodic_box=True)
+                if _ % self.h5_freq == 0 and _ != 0:
+                    h5_file.close()
+                    h5_file_count += 1
+                    h5_file = TrajWriter(
+                        f'{self.path}/{self.sysname:s}_{h5_file_count}.h5',
+                        self.nparticles,
+                        self.h5_freq,
+                        precision=64,
+                    )
+                h5_file.write_frame(positions, velocities, forces, pe, ke, cell)
+                end_time = time.time()
+            h5_file.early_close()
         else:
-            nbatches = 10
-            batch = int(self.steps / nbatches)
-            for i in tqdm(range(nbatches),mininterval=1):
-                simulation.step(batch)
-                simulation.saveCheckpoint(fcheck_out)
+            total_stages = int(self.steps / self.save_freq)
+            h5_file_count = 0
+            h5_file = TrajWriter(
+                f'{self.path}/{self.sysname:s}_{h5_file_count}.h5',
+                self.nparticles,
+                self.h5_freq,
+                precision=64,
+            )
+            for _ in range(total_stages):
+                simulation.step(self.save_freq)
+                (
+                    positions,
+                    velocities,
+                    forces,
+                    pe,
+                    ke,
+                    cell,
+                ) = self.get_information(as_numpy=True, enforce_periodic_box=True)
+                if _ % self.h5_freq == 0 and _ != 0:
+                    h5_file.close()
+                    h5_file_count += 1
+                    h5_file = TrajWriter(
+                        f'{self.path}/{self.sysname:s}_{h5_file_count}.h5',
+                        self.nparticles,
+                        self.h5_freq,
+                        precision=64,
+                    )
+                h5_file.write_frame(positions, velocities, forces, pe, ke, cell)
+            h5_file.early_close()
         simulation.saveCheckpoint(fcheck_out)
 
         now = datetime.now()

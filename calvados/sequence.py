@@ -18,7 +18,6 @@ import warnings
 
 from joblib import load
 
-import numba as nb
 from scipy.integrate import quad
 
 from calvados import analysis, interactions
@@ -163,7 +162,6 @@ def seq_com(qs_abs):
         com = len(qs_abs) // 2
     return com
 
-@nb.jit(nopython=True)
 def calc_SCD(seq,charge_termini=False):
     """ Sequence charge decoration, eq. 14 in Sawle & Ghosh, JCP 2015 """
     qs, _ = get_qs_fast(seq)
@@ -179,7 +177,6 @@ def calc_SCD(seq,charge_termini=False):
     scd = scd / N
     return scd
 
-# @nb.jit(nopython=True)
 def calc_SHD(seq,lambda_map,beta=-1.):
     """ Sequence hydropathy decoration, eq. 4 in Zheng et al., JPC Letters 2020"""
     N = len(seq)
@@ -309,7 +306,6 @@ def swap_pos(seq,i,j):
     return seq
 
 
-# @nb.jit(nopython=True)
 def calc_qpatch(seq,charge_termini=False,beta=0.5):
     """ Patchiness """
     qs, _ = get_qs(seq)
@@ -327,7 +323,6 @@ def calc_qpatch(seq,charge_termini=False,beta=0.5):
     U /= (N*(N-1) / 2 + N)
     return U
 
-@nb.jit(nopython=True)
 def get_U(N,qmap,r,cutoff=100):
     U = 0.
     for idx in range(0,N):
@@ -337,12 +332,10 @@ def get_U(N,qmap,r,cutoff=100):
                 U = U + u
     return U
 
-@nb.jit(nopython=True)
 def lj_potential(r,sig,eps):
     ulj = 4.*eps*((sig/r)**12 - (sig/r)**6)
     return ulj
 
-@nb.jit(nopython=True)
 def ah_potential(r,sig,eps,l,rc):
     if r <= 2**(1./6.)*sig:
         ah = lj_potential(r,sig,eps) - l * lj_potential(rc,sig,eps) + eps * (1 - l)
@@ -378,7 +371,6 @@ def make_sig_lambda_map(seq,residues):
     l_map = np.add.outer(ls,ls) / 2.
     return sig_map, l_map
 
-@nb.jit(nopython=True)
 def ikj_loop_ah(N,rs,sig_map,l_map,eps,rc,maxdist):
     U = 0
     for i in range(N):
@@ -415,7 +407,6 @@ def make_q_map(seq,residues):
     q_map = np.multiply.outer(qs,qs)
     return q_map
 
-@nb.jit(nopython=True)
 def ikj_loop_q(N,rs,q_map,k_yu,rc_yu,maxdist):
     U = 0
     for i in range(N):
@@ -444,7 +435,6 @@ def ah_single(seq,residues,rc=2.,eps=0.2*4.184,r0=0.6,beta=0.5):
     U = ij_loop_ah(N,rs,sig_map,l_map,eps,rc)
     return U
 
-@nb.jit(nopython=True)
 def ij_loop_ah(N,rs,sig_map,l_map,eps,rc):
     U = 0
     for i in range(N-2):
@@ -532,7 +522,6 @@ def calc_q_ij(seq,q_intgrl_map):
 
 ############ FAST KAPPA ################
 
-@nb.jit(nopython=True)
 def check_dmax(seq,dmax,seqmax):
     qs, _ = get_qs_fast(seq)
     # qs, _ = get_qs(seq)
@@ -542,7 +531,6 @@ def check_dmax(seq,dmax,seqmax):
     else:
         return seqmax, dmax
 
-@nb.jit(nopython=True)
 def calc_case0(seqpos,seqneg,seqneu):
     seqmax = ''
     dmax = 0.
@@ -567,7 +555,6 @@ def calc_case0(seqpos,seqneg,seqneu):
             seqmax, dmax = check_dmax(seqout,dmax,seqmax)
     return seqmax
 
-@nb.jit(nopython=True)
 def calc_case1(seqpos,seqneg,seqneu):
     seqmax = ''
     dmax = 0.
@@ -588,7 +575,6 @@ def calc_case1(seqpos,seqneg,seqneu):
             seqmax, dmax = check_dmax(seqout,dmax,seqmax)
     return seqmax
 
-@nb.jit(nopython=True)
 def calc_case2(seqpos,seqneg,seqneu):
     seqmax = ''
     dmax = 0.
@@ -607,7 +593,6 @@ def calc_case2(seqpos,seqneg,seqneu):
             seqmax, dmax = check_dmax(seqout,dmax,seqmax)
     return seqmax
 
-@nb.jit(nopython=True)
 def calc_case3(seqpos,seqneg,seqneu):
     seqmax = ''
     dmax = 0.
@@ -656,13 +641,11 @@ def calc_kappa_manual(seq):
     kappa = delta / delta_max
     return kappa
 
-@nb.jit(nopython=True)
 def calc_delta(qs):
     d5 = calc_delta_form(qs,window=5)
     d6 = calc_delta_form(qs,window=6)
     return (d5 + d6) / 2.
 
-@nb.jit(nopython=True)
 def calc_delta_form(qs,window=5):
     sig_m = calc_sigma(qs)
 
@@ -675,7 +658,6 @@ def calc_delta_form(qs,window=5):
     delta = np.sum((sigs-sig_m)**2) / nw
     return delta
 
-@nb.jit(nopython=True)
 def frac_charges(qs):
     N = len(qs)
     fpos = 0.
@@ -689,7 +671,6 @@ def frac_charges(qs):
     fneg = fneg / N
     return fpos, fneg
 
-@nb.jit(nopython=True)
 def calc_sigma(qs):
     fpos, fneg = frac_charges(qs)
     ncpr = fpos-fneg
@@ -699,7 +680,6 @@ def calc_sigma(qs):
     else:
         return ncpr**2 / fcr
 
-@nb.jit(nopython=True)
 def get_qs_fast(seq):
     """ charges and absolute charges vs. residues """
     qs = np.zeros(len(seq))

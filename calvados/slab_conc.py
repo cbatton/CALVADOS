@@ -3,7 +3,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 import pandas as pd
-from numba import jit
 import string
 from scipy.ndimage import gaussian_filter1d
 from mdtraj import element

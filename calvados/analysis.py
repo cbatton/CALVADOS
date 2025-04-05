@@ -1,5 +1,4 @@
 import numpy as np
-import numba as nb
 import pandas as pd
 
 import MDAnalysis
@@ -21,7 +20,6 @@ PACKAGEDIR = Path(__file__).parent.absolute()
 sys.path.append(f'{str(PACKAGEDIR):s}/BLOCKING')
 from main import BlockAnalysis
 
-@nb.jit(nopython=True)
 def calc_energy(dmap,sig,lam,rc_lj,eps_lj,qmap,
                 k_yu,rc_yu=4.0,
                same_domain=False):
@@ -58,19 +56,16 @@ def calc_energy(dmap,sig,lam,rc_lj,eps_lj,qmap,
                 u_yu[i,j] = 0.
     return u_ah, u_yu
 
-@nb.jit(nopython=True)
 def yukawa_potential(r,q,kappa_yu,rc_yu=4.0):
     # q = epsi_yu * epsj_yu
     shift = np.exp(-kappa_yu*rc_yu)/rc_yu
     u = q * (np.exp(-kappa_yu*r)/r - shift)
     return u
 
-@nb.jit(nopython=True)
 def lj_potential(r,sig,eps):
     ulj = 4.*eps*((sig/r)**12 - (sig/r)**6)
     return ulj
 
-@nb.jit(nopython=True)
 def ah_potential(r,sig,eps,l,rc):
     if r <= 2**(1./6.)*sig:
         ah = lj_potential(r,sig,eps) - l * lj_potential(rc,sig,eps) + eps * (1 - l)
