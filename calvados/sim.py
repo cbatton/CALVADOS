@@ -645,6 +645,7 @@ class Sim:
             )
             start_time = time.time()
             end_time = time.time()
+            stage_count = 0
             while (end_time - start_time) < runtime:
                 simulation.step(self.save_freq)
                 (
@@ -655,7 +656,7 @@ class Sim:
                     ke,
                     cell,
                 ) = self.get_information(simulation, as_numpy=True, enforce_periodic_box=True)
-                if _ % self.h5_freq == 0 and _ != 0:
+                if stage_count % self.h5_freq == 0 and stage_count != 0:
                     h5_file.close()
                     h5_file_count += 1
                     h5_file = TrajWriter(
@@ -666,6 +667,7 @@ class Sim:
                     )
                 h5_file.write_frame(positions, velocities, forces, pe, ke, cell)
                 end_time = time.time()
+                stage_count += 1
             h5_file.early_close()
         else:
             total_stages = int(self.steps / self.save_freq)
@@ -685,7 +687,7 @@ class Sim:
                     pe,
                     ke,
                     cell,
-                ) = self.get_information(as_numpy=True, enforce_periodic_box=True)
+                ) = self.get_information(simulation, as_numpy=True, enforce_periodic_box=True)
                 if _ % self.h5_freq == 0 and _ != 0:
                     h5_file.close()
                     h5_file_count += 1
